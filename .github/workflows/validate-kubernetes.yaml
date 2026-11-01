@@ -33,3 +33,39 @@ jobs:
 
       - name: Validate Kubernetes schemas
         run: kubeconform -strict -summary -kubernetes-version 1.32.0 k8s/base/
+
+  deploy:
+    name: Deploy to GKE
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: projects/781699136096/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+          service_account: github-deployer@sandip-k8s-platform.iam.gserviceaccount.com
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v3
+        with:
+          cluster_name: k8s-learning-cluster
+          location: asia-south1-a
+          project_id: sandip-k8s-platform
+
+      - name: Deploy Kubernetes manifests
+        run: kubectl apply -f k8s/base/
+
+      - name: Verify deployment rollout
+        run: kubectl rollout status deployment/nginx-web --namespace=app-dev --timeout=120s
+
+      - name: Check deployed resources
+        run: kubectl get deployments,services -n app-dev
